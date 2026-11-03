@@ -54,7 +54,10 @@ public class UserConsumer : BackgroundService
                     Name = input.Name,
                     Login = input.Login,
                     Password = input.Password,
-                    UserRole = input.UserRole
+                    UserRole = input.UserRole,
+                    DailyRate = input.DailyRate,
+                    DailyRateWkend = input.DailyRateWkend,
+                    Pix = input.Pix
                 };
 
                 dbContext.Users.Add(user);

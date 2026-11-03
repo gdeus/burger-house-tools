@@ -10,5 +10,6 @@ public class User{
     public String Password { get; set; }
     public UserRole UserRole { get; set; }
     public decimal DailyRate { get; set; }
+    public decimal DailyRateWkend { get; set; }
     public string Pix { get; set; }
 }

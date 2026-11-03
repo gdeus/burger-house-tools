@@ -25,20 +25,23 @@ public class UsersController : ControllerBase
     [Authorize(Roles = "Admin,Caixa,Garcom")]
     public async Task<IActionResult> GetAll()
     {
-        var users = await _context.Users.ToListAsync();
-        return Ok(users);
+        var canViewDailyRate = User.IsInRole("Admin");
+        var users = await _context.Users.AsNoTracking().ToListAsync();
+        var response = users.Select(u => MapToResponseDto(u, canViewDailyRate));
+        return Ok(response);
     }
 
     [HttpGet("{id}")]
     [Authorize(Roles = "Admin,Caixa,Garcom")]
     public async Task<IActionResult> GetById(int id)
     {
-        var users = await _context.Users.FindAsync(id);
+        var user = await _context.Users.FindAsync(id);
         
-        if (users is null) 
+        if (user is null) 
             return NotFound(new { message = "Usuario não encontrado." });
             
-        return Ok(users);
+        var canViewDailyRate = User.IsInRole("Admin");
+        return Ok(MapToResponseDto(user, canViewDailyRate));
     }
 
     [HttpPost]
@@ -66,13 +69,14 @@ public class UsersController : ControllerBase
             Password = input.Password,
             UserRole = input.UserRole,
             DailyRate = input.DailyRate,
+            DailyRateWkend = input.DailyRateWkend,
             Pix = input.Pix
         };
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+        return CreatedAtAction(nameof(GetById), new { id = user.Id }, MapToResponseDto(user, true));
     }
 
     [HttpPut("{id}")]
@@ -89,6 +93,7 @@ public class UsersController : ControllerBase
         user.Password = input.Password;
         user.UserRole = input.UserRole;
         user.DailyRate = input.DailyRate;
+        user.DailyRateWkend = input.DailyRateWkend;
         user.Pix = input.Pix;
 
         await _context.SaveChangesAsync();
@@ -109,5 +114,20 @@ public class UsersController : ControllerBase
         await _context.SaveChangesAsync();
         
         return NoContent();
+    }
+
+    private static UserResponseDto MapToResponseDto(User user, bool canViewDailyRate)
+    {
+        return new UserResponseDto
+        {
+            Id = user.Id,
+            KeycloakId = user.KeycloakId,
+            Name = user.Name,
+            Login = user.Login,
+            UserRole = user.UserRole,
+            DailyRate = canViewDailyRate ? user.DailyRate : null,
+            DailyRateWkend = canViewDailyRate ? user.DailyRateWkend : null,
+            Pix = user.Pix
+        };
     }
 }

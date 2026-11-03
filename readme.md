@@ -17,12 +17,21 @@ Este projeto foi desenvolvido para botar em prática aprendizados de backend. O 
   * Integração com Keycloak via OpenID Connect (JWT Bearer).
   * Controle de acesso baseado em Roles (`Admin`, `Caixa`, `Garcom`).
   * Endpoint customizado `POST /api/auth/login` que realiza o login e retorna o JWT Bearer Token.
-  * Criação de usuários integrada: ao cadastrar um usuário (apenas Admin), ele é registrado no Keycloak (login, senha e role) e os dados de negócio (`DailyRate`, `Pix`) são persistidos no SQL Server.
+* **Gestão de Usuários e Privacidade de Dados por Role:**
+  * Criação integrada: ao cadastrar um usuário (apenas `Admin`), ele é registrado no Keycloak (login, senha e role) e os dados de negócio são persistidos no SQL Server.
+  * Suporte a diárias diferenciadas: `DailyRate` (dia de semana) e `DailyRateWkend` (fim de semana).
+  * **Privacidade Granular:** Usuários com a role `Caixa` podem listar os funcionários (`GET /api/users`), mas **não têm acesso aos valores das diárias** (`DailyRate` e `DailyRateWkend` são omitidos da resposta via DTO).
+* **Gestão de Diárias e Turnos (`Dailies`):**
+  * Registro de diárias trabalhadas vinculadas a funcionários (`Daily`).
+  * **Cálculo Automático de Valor:** O backend detecta se o dia trabalhado é fim de semana (Sábado/Domingo) e aplica automaticamente `DailyRateWkend`, ou `DailyRate` para dias de semana.
+  * O `Caixa` pode registrar e visualizar os turnos trabalhados **sem ter acesso ou precisar informar valores financeiros**.
+  * **Visualização por Período (Semanal e Mensal):** Grade completa de dias com as diárias registradas em cada dia.
+  * **Painel Financeiro (Apenas Admin):** Totalizador do período com `totalValue`, `totalPaid` e `totalPending`.
+  * Controle de pagamento de diárias (`PATCH /api/dailies/{id}/pay`).
 * **Entity Framework Core Avançado:** 
-  * Mapeamento Code-First e execução de Migrations via CLI (`dotnet ef`).
-  * Suporte a campos de negócio como `DailyRate` (decimal com precisão 10,2), `Pix` e `KeycloakId`.
+  * Mapeamento Code-First, precisão decimal `(10, 2)` e execução de Migrations via CLI (`dotnet ef`).
 * **Mensageria com RabbitMQ:** 
-  * `BackgroundService` consumidor de mensagens para cadastro de novos usuários.
+  * `BackgroundService` consumidor de mensagens para cadastro assíncrono de novos usuários.
 * **Documentação com Swagger:**
   * Documentação interativa com botão **Authorize** para envio do Bearer Token.
 
@@ -32,15 +41,32 @@ Este projeto foi desenvolvido para botar em prática aprendizados de backend. O 
 
 ```text
 burger-house-tools-api/
-├── Controllers/       # Gerenciamento de rotas HTTP (UsersController, AuthController)
-├── Models/            # Entidades de domínio (User)
-│   └── Enums/         # Enumerações (UserRole)
-├── DTOs/              # Objetos de transferência de dados (UserInputDto, LoginInputDto, etc.)
-├── Data/              # Configuração do Entity Framework (AppDbContext, Migrations)
-├── Services/          # Regras de negócio, KeycloakService e Workers RabbitMQ
-├── keycloak/          # Arquivo de importação automática do Realm (realm-export.json)
-├── Program.cs         # Ponto de entrada, middlewares de autenticação/autorização e Swagger
-└── docker-compose.yml # Infraestrutura (SQL Server + RabbitMQ + Keycloak)
+├── Controllers/
+│   ├── AuthController.cs          # Autenticação e geração de token via Keycloak
+│   ├── UsersController.cs         # Gerenciamento de usuários e controle de visibilidade
+│   └── DailiesController.cs       # Gestão de diárias, escalas semanal/mensal e pagamentos
+├── Models/
+│   ├── User.cs                    # Entidade de usuário (com DailyRate e DailyRateWkend)
+│   ├── Daily.cs                   # Entidade de diária/turno trabalhado
+│   └── Enums/UserRole.cs          # Enumerações de cargos (Admin, Caixa, Garcom)
+├── DTOs/
+│   ├── UserInputDto.cs            # Entrada para cadastro/atualização de usuário
+│   ├── UserResponseDto.cs         # Retorno seguro de usuário (omite senha e diárias para Caixa)
+│   ├── DailyInputDto.cs           # Entrada para registro de diária
+│   ├── DailyResponseDto.cs        # Retorno de diária (omite valor para Caixa)
+│   ├── DailyPeriodResponseDto.cs  # Resposta estruturada para visão semanal/mensal
+│   ├── LoginInputDto.cs           # Credenciais de login
+│   └── LoginResponseDto.cs        # Tokens JWT retornados pelo Keycloak
+├── Data/
+│   ├── AppDbContext.cs            # Contexto do EF Core e mapeamentos relacionais
+│   └── Migrations/                # Histórico de migrações do banco de dados
+├── Services/
+│   ├── KeycloakService.cs         # Comunicação HTTP com a API Admin do Keycloak
+│   └── UserConsumer.cs            # Consumidor de fila RabbitMQ (BackgroundService)
+├── keycloak/
+│   └── realm-export.json          # Realm pré-configurado do Keycloak
+├── Program.cs                     # Injeção de dependências, JWT e Swagger
+└── docker-compose.yml             # Infraestrutura (SQL Server + RabbitMQ + Keycloak)
 ```
 
 ---
@@ -78,9 +104,9 @@ O Keycloak já nasce com os seguintes usuários prontos para teste:
 
 | Usuário | Senha | Role | Permissões na API |
 | :--- | :--- | :--- | :--- |
-| **`admin`** | `admin123` | `Admin` | Acesso total: listar, criar, editar e excluir usuários |
-| **`caixa`** | `caixa123` | `Caixa` | Apenas consulta (`GET /api/users`) |
-| **`garcom`** | `garcom123` | `Garcom` | Apenas consulta (`GET /api/users`) |
+| **`admin`** | `admin123` | `Admin` | Acesso total: gerencia usuários, visualiza todas as diárias, valores e relatórios financeiros |
+| **`caixa`** | `caixa123` | `Caixa` | Consulta usuários (sem diárias) e cadastra/consulta diárias (sem valores financeiros) |
+| **`garcom`** | `garcom123` | `Garcom` | Apenas consulta básica de usuários |
 
 ---
 
@@ -92,40 +118,49 @@ O Keycloak já nasce com os seguintes usuários prontos para teste:
      dotnet run --project burger-house-tools-api
      ```
 2. **Abra o Swagger no navegador:**
-   * Acesse `https://localhost:7176/swagger` (ou a porta informada no terminal).
+   * Acesse `https://localhost:7176/swagger` (ou a porta HTTP `http://localhost:5016/swagger`).
 
 3. **Obter o Token de Acesso:**
    * Abra o endpoint `POST /api/auth/login`.
-   * Clique em **Try it out** e faça o login com um dos usuários de teste:
-     ```json
-     {
-       "login": "admin",
-       "password": "admin123"
-     }
-     ```
-   * Clique em **Execute**.
-   * Copie o valor de **`access_token`** retornado na resposta (apenas o código que inicia com `eyJ...`, sem as aspas).
+   * Faça login com **`admin`** (`admin123`) ou **`caixa`** (`caixa123`).
+   * Copie o valor do **`access_token`**.
 
 4. **Autenticar o Swagger:**
-   * Clique no botão verde **`Authorize`** 🔒 no topo direito da página do Swagger.
-   * Cole o token no campo **`Value:`** (apenas o token puro, sem escrever `Bearer`).
+   * Clique no botão verde **`Authorize`** 🔒 no topo direito.
+   * Cole o token no campo **`Value:`** (apenas o token puro, sem prefixo `Bearer`).
    * Clique em **Authorize** e depois em **Close**.
 
-5. **Testar os Endpoints Protegidos:**
-   * `GET /api/users` → Lista os usuários do banco (permitido para `Admin`, `Caixa` e `Garcom`).
-   * `POST /api/users` → Cria um novo usuário no Keycloak e no banco local (permitido **apenas** para `Admin`):
-     ```json
-     {
-       "name": "Novo Garcom",
-       "login": "novogarcom",
-       "password": "senhaForte123!",
-       "userRole": "Garcom",
-       "dailyRate": 150.00,
-       "pix": "garcom@email.com"
-     }
-     ```
-   * `PUT /api/users/{id}` → Atualiza dados de um usuário (apenas `Admin`).
-   * `DELETE /api/users/{id}` → Remove usuário (apenas `Admin`).
+---
+
+### 6. Endpoints Principais
+
+#### 👤 Usuários (`/api/users`)
+* `GET /api/users` → Lista todos os usuários.
+  * Para **`Admin`**: retorna dados completos, incluindo `dailyRate` e `dailyRateWkend`.
+  * Para **`Caixa`**: retorna nome, login, cargo e pix, ocultando campos financeiros.
+* `POST /api/users` → Cadastra usuário no Keycloak e no banco local (apenas `Admin`).
+* `PUT /api/users/{id}` → Atualiza dados do usuário (apenas `Admin`).
+* `DELETE /api/users/{id}` → Remove usuário (apenas `Admin`).
+
+#### 📅 Diárias e Escalas (`/api/dailies`)
+* `POST /api/dailies` → Registra um dia trabalhado (`Admin` e `Caixa`):
+  ```json
+  {
+    "userId": 2,
+    "date": "2026-11-03",
+    "paid": false,
+    "notes": "Turno da noite"
+  }
+  ```
+  *(O valor da diária é atribuído automaticamente pelo sistema com base no dia ser semana ou final de semana)*.
+* `GET /api/dailies/weekly?date=2026-11-03` → Visão semanal em grade:
+  * Agrupa os 7 dias da semana (Segunda a Domingo).
+  * Exibe quem trabalhou em cada dia.
+  * Para o `Admin`, inclui `dayTotal`, `totalValue`, `totalPaid` e `totalPending`.
+  * Para o `Caixa`, exibe a escala sem informações financeiras.
+* `GET /api/dailies/monthly?year=2026&month=11` → Visão mensal completa.
+* `PATCH /api/dailies/{id}/pay?paid=true` → Altera o status de pagamento da diária (apenas `Admin`).
+* `DELETE /api/dailies/{id}` → Exclui registro de diária (apenas `Admin`).
 
 ---
 
