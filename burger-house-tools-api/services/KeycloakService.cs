@@ -89,7 +89,12 @@ public class KeycloakService
         var userPayload = new
         {
             username = username,
+            email = $"{username.ToLowerInvariant()}@burgerhouse.com",
+            firstName = username,
+            lastName = "BurgerHouse",
             enabled = true,
+            emailVerified = true,
+            requiredActions = Array.Empty<string>(),
             credentials = new[]
             {
                 new
