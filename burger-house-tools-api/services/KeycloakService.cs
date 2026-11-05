@@ -108,7 +108,10 @@ public class KeycloakService
         createRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         var createResponse = await _httpClient.SendAsync(createRequest);
-        createResponse.EnsureSuccessStatusCode();
+        if (createResponse.StatusCode != System.Net.HttpStatusCode.Conflict)
+        {
+            createResponse.EnsureSuccessStatusCode();
+        }
 
         // 2. Buscar o ID do usuário recém-criado
         using var searchRequest = new HttpRequestMessage(HttpMethod.Get, $"{adminUrl}/users?username={username}&exact=true");

@@ -13,12 +13,12 @@ namespace burger_house_tools_api.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly AppDbContext _context;
-    private readonly KeycloakService _keycloakService;
+    private readonly RabbitMqPublisher _publisher;
 
-    public UsersController(AppDbContext context, KeycloakService keycloakService)
+    public UsersController(AppDbContext context, RabbitMqPublisher publisher)
     {
         _context = context;
-        _keycloakService = keycloakService;
+        _publisher = publisher;
     }
 
     [HttpGet]
@@ -48,22 +48,16 @@ public class UsersController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] UserInputDto input)
     {
-        // 1. Cria o usuário no Keycloak (login, senha e role)
-        string keycloakId;
-        try
+        var loginExists = await _context.Users.AnyAsync(u => u.Login == input.Login);
+        if (loginExists)
         {
-            keycloakId = await _keycloakService.CreateUserAsync(
-                input.Login, input.Password, input.UserRole.ToString());
-        }
-        catch (HttpRequestException ex)
-        {
-            return BadRequest(new { message = "Erro ao criar usuário no Keycloak.", details = ex.Message });
+            return BadRequest(new { message = "Já existe um usuário com este login." });
         }
 
-        // 2. Salva os dados de negócio na tabela local
+        // 1. Salva os dados de negócio na tabela local imediatamente (garante resposta rápida para o Frontend)
         var user = new User
         {
-            KeycloakId = keycloakId,
+            KeycloakId = string.Empty,
             Name = input.Name,
             Login = input.Login,
             Password = input.Password,
@@ -75,6 +69,19 @@ public class UsersController : ControllerBase
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
+
+        // 2. Publica na fila do RabbitMQ para o UserConsumer provisionar no Keycloak em background
+        await _publisher.PublishAsync(RabbitMqPublisher.UserQueueName, new UserQueueMessageDto
+        {
+            UserId = user.Id,
+            Name = user.Name,
+            Login = user.Login,
+            Password = user.Password,
+            UserRole = user.UserRole,
+            DailyRate = user.DailyRate,
+            DailyRateWkend = user.DailyRateWkend,
+            Pix = user.Pix
+        });
 
         return CreatedAtAction(nameof(GetById), new { id = user.Id }, MapToResponseDto(user, true));
     }

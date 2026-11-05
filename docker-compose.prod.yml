@@ -1,0 +1,66 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver_db
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${DB_PASSWORD:-SuaSenhaForte123!}
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq_broker
+    restart: unless-stopped
+    ports:
+      - "15672:15672"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak_auth
+    restart: unless-stopped
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    command: start-dev --import-realm
+
+  api:
+    build:
+      context: ./burger-house-tools-api
+      dockerfile: Dockerfile
+    container_name: burger_house_api
+    restart: unless-stopped
+    depends_on:
+      - sqlserver
+      - rabbitmq
+      - keycloak
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MotoristaDb;User Id=sa;Password=${DB_PASSWORD:-SuaSenhaForte123!};TrustServerCertificate=True;
+      - Keycloak__Authority=http://keycloak:8080/realms/burger-house
+      - Keycloak__ClientId=burger-house-api
+      - Keycloak__AdminClientId=admin-cli
+      - Keycloak__AdminClientSecret=${KEYCLOAK_CLIENT_SECRET:-burger-house-admin-secret-123}
+      - RabbitMq__HostName=rabbitmq
+      - INITIAL_USERS_JSON=${INITIAL_USERS_JSON:-}
+    ports:
+      - "5016:8080"
+
+  web:
+    build:
+      context: ./burger-house-tools-web
+      dockerfile: Dockerfile
+    container_name: burger_house_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  sqlserver_data:

@@ -66,20 +66,39 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// 5. Registra o serviço de background do RabbitMQ (O seu passo 5)
+// 5. Registra o Publisher e os serviços de background do RabbitMQ + Seeder
+builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddHostedService<UserConsumer>();
+builder.Services.AddHostedService<DailyConsumer>();
+builder.Services.AddHostedService<DatabaseSeeder>();
 
 // 6. Registra o HttpClient e o KeycloakService
 builder.Services.AddHttpClient<KeycloakService>();
 
 var app = builder.Build();
 
-// 7. Middlewares HTTP
-if (app.Environment.IsDevelopment())
+// Aplica as migrações automaticamente na inicialização (com retry para aguardar o SQL Server no Docker)
+using (var scope = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    for (var attempt = 1; attempt <= 10; attempt++)
+    {
+        try
+        {
+            db.Database.Migrate();
+            break;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Database Migration] Tentativa {attempt}/10 aguardando SQL Server: {ex.Message}");
+            Thread.Sleep(3000);
+        }
+    }
 }
+
+// 7. Middlewares HTTP
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseAuthentication();
 app.UseAuthorization();

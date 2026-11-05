@@ -62,55 +62,19 @@
   ],
   "users": [
     {
-      "username": "admin",
+      "username": "service-account-admin-cli",
       "enabled": true,
-      "email": "admin@burgerhouse.com",
-      "firstName": "Admin",
-      "lastName": "Burger",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "admin123",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "Admin"
-      ]
-    },
-    {
-      "username": "caixa",
-      "enabled": true,
-      "email": "caixa@burgerhouse.com",
-      "firstName": "Caixa",
-      "lastName": "Burger",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "caixa123",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "Caixa"
-      ]
-    },
-    {
-      "username": "garcom",
-      "enabled": true,
-      "email": "garcom@burgerhouse.com",
-      "firstName": "Garcom",
-      "lastName": "Burger",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "garcom123",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "Garcom"
-      ]
+      "serviceAccountClientId": "admin-cli",
+      "clientRoles": {
+        "realm-management": [
+          "realm-admin",
+          "manage-users",
+          "view-users",
+          "query-users",
+          "manage-realm",
+          "view-realm"
+        ]
+      }
     }
   ]
 }

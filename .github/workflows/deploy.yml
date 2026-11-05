@@ -1,0 +1,52 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy via SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build .NET API
+        run: dotnet build burger-house-tools-api/burger-house-tools-api.csproj --configuration Release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build React Frontend
+        working-directory: ./burger-house-tools-web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Oracle Cloud VM via SSH
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            mkdir -p "$HOME/burger-house-tools-api"
+            cd "$HOME/burger-house-tools-api"
+            if [ ! -d ".git" ]; then
+              git init
+              git remote add origin https://github.com/${{ github.repository }}.git
+            fi
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f
