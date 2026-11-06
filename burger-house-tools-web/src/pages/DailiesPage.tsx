@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { dailyService } from '../services/dailyService';
+import { advanceService } from '../services/advanceService';
 import { userService } from '../services/userService';
 import type { Daily, DailyPeriodResponse, WeeklyUserSummaryResponse } from '../types/daily';
+import type { Advance } from '../types/advance';
 import type { User } from '../types/user';
 import {
   Calendar as CalendarIcon,
@@ -47,6 +49,16 @@ export const DailiesPage: React.FC = () => {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Adiantamentos (Advances)
+  const [advances, setAdvances] = useState<Advance[]>([]);
+  const [advanceModalOpen, setAdvanceModalOpen] = useState(false);
+  const [selectedAdvanceUserId, setSelectedAdvanceUserId] = useState<number | null>(null);
+  const [advanceDate, setAdvanceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [advanceValue, setAdvanceValue] = useState<string>('');
+  const [advanceNotes, setAdvanceNotes] = useState<string>('');
+  const [advanceSubmitting, setAdvanceSubmitting] = useState(false);
+  const [advanceModalError, setAdvanceModalError] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -56,16 +68,31 @@ export const DailiesPage: React.FC = () => {
           dailyService.getWeekly({ date: currentDate }),
           dailyService.getWeeklySummary({ date: currentDate }),
         ]);
+        const advRes = await advanceService.getAll({
+          startDate: res.startDate,
+          endDate: res.endDate,
+        });
         setData(res);
         setWeeklySummary(summaryRes);
+        setAdvances(advRes);
       } else if (mode === 'Summary') {
         const summaryRes = await dailyService.getWeeklySummary({ date: currentDate });
+        const advRes = await advanceService.getAll({
+          startDate: summaryRes.startDate,
+          endDate: summaryRes.endDate,
+        });
         setWeeklySummary(summaryRes);
+        setAdvances(advRes);
       } else {
         const [year, month] = currentDate.split('-').map(Number);
-        const res = await dailyService.getMonthly({ year, month });
+        const [res, summaryRes, advRes] = await Promise.all([
+          dailyService.getMonthly({ year, month }),
+          dailyService.getMonthlySummary({ year, month }),
+          advanceService.getAll({ year, month }),
+        ]);
         setData(res);
-        setWeeklySummary(null);
+        setWeeklySummary(summaryRes);
+        setAdvances(advRes);
       }
     } catch {
       setError('Erro ao carregar diárias do período.');
@@ -183,6 +210,63 @@ export const DailiesPage: React.FC = () => {
       setEditError(axiosErr.response?.data?.message || 'Erro ao atualizar observação.');
     } finally {
       setEditSubmitting(false);
+    }
+  };
+
+  // Modal de Adiantamento (apenas 1 funcionário + valor)
+  const openAdvanceModal = async (targetDate?: string) => {
+    setAdvanceModalError(null);
+    setSelectedAdvanceUserId(null);
+    setAdvanceValue('');
+    setAdvanceNotes('');
+    setAdvanceDate(targetDate ?? currentDate);
+    setAdvanceModalOpen(true);
+
+    try {
+      const users = await userService.getAll();
+      setUsersList(users);
+    } catch {
+      setAdvanceModalError('Não foi possível carregar a lista de funcionários.');
+    }
+  };
+
+  const handleCreateAdvance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAdvanceUserId) return;
+
+    const numericValue = Number(advanceValue.replace(',', '.'));
+    if (Number.isNaN(numericValue) || numericValue <= 0) {
+      setAdvanceModalError('Informe um valor válido maior que zero.');
+      return;
+    }
+
+    setAdvanceSubmitting(true);
+    setAdvanceModalError(null);
+
+    try {
+      await advanceService.create({
+        userId: selectedAdvanceUserId,
+        value: numericValue,
+        date: advanceDate,
+        notes: advanceNotes.trim() ? advanceNotes.trim() : undefined,
+      });
+      setAdvanceModalOpen(false);
+      loadData();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      setAdvanceModalError(axiosErr.response?.data?.message || 'Erro ao registrar adiantamento.');
+    } finally {
+      setAdvanceSubmitting(false);
+    }
+  };
+
+  const handleDeleteAdvance = async (id: number) => {
+    if (!confirm('Deseja realmente remover este adiantamento?')) return;
+    try {
+      await advanceService.delete(id);
+      loadData();
+    } catch {
+      alert('Erro ao excluir adiantamento.');
     }
   };
 
@@ -382,107 +466,164 @@ export const DailiesPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Lista de Diárias do Dia */}
-                    <div className="p-3 space-y-2.5 flex-1 min-h-[140px]">
-                      {day.dailies.length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-center text-xs text-slate-400 py-6">
-                          Sem registros
-                        </div>
-                      ) : (
-                        day.dailies.map((daily) => (
-                          <div
-                            key={daily.id}
-                            className="p-2.5 rounded-xl border border-slate-200 bg-white shadow-xs hover:border-slate-300 transition-colors text-xs space-y-1.5"
-                          >
-                            <div className="flex items-start justify-between gap-1">
-                              <div>
-                                <p className="font-semibold text-slate-900 leading-tight">{daily.userName}</p>
-                                <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                  {daily.userRole}
-                                </span>
-                              </div>
-
-                              {daily.paid ? (
-                                <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                  Pago
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                                  Pendente
-                                </span>
-                              )}
+                    {/* Lista de Diárias e Adiantamentos do Dia */}
+                    {(() => {
+                      const dayAdvances = advances.filter((a) => a.date === day.date);
+                      return (
+                        <div className="p-3 space-y-2.5 flex-1 min-h-[140px]">
+                          {day.dailies.length === 0 && dayAdvances.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-center text-xs text-slate-400 py-6">
+                              Sem registros
                             </div>
-
-                            {daily.notes && (
-                              <p className="text-[11px] text-slate-500 italic line-clamp-2">“{daily.notes}”</p>
-                            )}
-
-                            {/* Valor (Apenas Admin) */}
-                            {isAdmin && typeof daily.value === 'number' && (
-                              <div className="font-bold text-slate-900 pt-1 border-t border-slate-100 flex items-center justify-between">
-                                <span>Valor:</span>
-                                <span>R$ {daily.value.toFixed(2)}</span>
-                              </div>
-                            )}
-
-                            {/* Ações da Diária (Editar observação para Admin/Caixa; Pagar/Excluir para Admin) */}
-                            {(isAdmin || isCaixa) && (
-                              <div className="flex items-center justify-end space-x-1 pt-1.5 border-t border-slate-100">
-                                <button
-                                  onClick={() => openEditModal(daily)}
-                                  title="Editar observação"
-                                  className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
-
-                                {isAdmin && (
-                                  <>
-                                    <button
-                                      onClick={() => handleTogglePay(daily.id, daily.paid)}
-                                      title={daily.paid ? 'Marcar como Pendente' : 'Marcar como Pago'}
-                                      className={`p-1 rounded hover:bg-slate-100 transition-colors ${
-                                        daily.paid ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'
-                                      }`}
-                                    >
-                                      <CheckCircle2 className="w-4 h-4" />
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDeleteDaily(daily.id)}
-                                      title="Remover diária"
-                                      className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Rodapé do Card do Dia: Total (Apenas Admin) e Botão + no canto inferior direito */}
-                    {(isAdmin || isCaixa) && (
-                      <div className="p-2.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex items-center justify-between text-xs">
-                        <div>
-                          {isAdmin && typeof day.dayTotal === 'number' && (
+                          ) : (
                             <>
-                              <span className="text-slate-500 mr-1">Total:</span>
-                              <span className="font-bold text-slate-900">R$ {day.dayTotal.toFixed(2)}</span>
+                              {day.dailies.map((daily) => (
+                                <div
+                                  key={daily.id}
+                                  className="p-2.5 rounded-xl border border-slate-200 bg-white shadow-xs hover:border-slate-300 transition-colors text-xs space-y-1.5"
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <div>
+                                      <p className="font-semibold text-slate-900 leading-tight">{daily.userName}</p>
+                                      <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                        {daily.userRole}
+                                      </span>
+                                    </div>
+
+                                    {daily.paid ? (
+                                      <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                        Pago
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                        Pendente
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {daily.notes && (
+                                    <p className="text-[11px] text-slate-500 italic line-clamp-2">“{daily.notes}”</p>
+                                  )}
+
+                                  {/* Valor (Apenas Admin) */}
+                                  {isAdmin && typeof daily.value === 'number' && (
+                                    <div className="font-bold text-slate-900 pt-1 border-t border-slate-100 flex items-center justify-between">
+                                      <span>Valor:</span>
+                                      <span>R$ {daily.value.toFixed(2)}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Ações da Diária (Editar observação para Admin/Caixa; Pagar/Excluir para Admin) */}
+                                  {(isAdmin || isCaixa) && (
+                                    <div className="flex items-center justify-end space-x-1 pt-1.5 border-t border-slate-100">
+                                      <button
+                                        onClick={() => openEditModal(daily)}
+                                        title="Editar observação"
+                                        className="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      {isAdmin && (
+                                        <>
+                                          <button
+                                            onClick={() => handleTogglePay(daily.id, daily.paid)}
+                                            title={daily.paid ? 'Marcar como Pendente' : 'Marcar como Pago'}
+                                            className={`p-1 rounded hover:bg-slate-100 transition-colors ${
+                                              daily.paid ? 'text-emerald-600' : 'text-slate-400 hover:text-emerald-600'
+                                            }`}
+                                          >
+                                            <CheckCircle2 className="w-4 h-4" />
+                                          </button>
+
+                                          <button
+                                            onClick={() => handleDeleteDaily(daily.id)}
+                                            title="Remover diária"
+                                            className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+
+                              {/* Lista de Adiantamentos do Dia (Visível para Admin e Caixa) */}
+                              {dayAdvances.map((adv) => (
+                                <div
+                                  key={`adv-${adv.id}`}
+                                  className="p-2.5 rounded-xl border border-red-200 bg-red-50/60 shadow-xs text-xs space-y-1.5"
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <div>
+                                      <p className="font-semibold text-slate-900 leading-tight">{adv.userName}</p>
+                                      <span className="text-[10px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-semibold">
+                                        Adiantamento
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      onClick={() => handleDeleteAdvance(adv.id)}
+                                      title="Remover adiantamento"
+                                      className="p-1 rounded text-red-400 hover:text-red-700 hover:bg-red-100 transition-colors"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {adv.notes && (
+                                    <p className="text-[11px] text-slate-600 italic line-clamp-2">“{adv.notes}”</p>
+                                  )}
+
+                                  <div className="font-bold text-red-700 pt-1 border-t border-red-200/70 flex items-center justify-between">
+                                    <span>Valor:</span>
+                                    <span>R$ {adv.value.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              ))}
                             </>
                           )}
                         </div>
+                      );
+                    })()}
 
-                        <button
-                          onClick={() => openCreateModal(day.date)}
-                          title="Registrar diárias neste dia"
-                          className="w-8 h-8 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white flex items-center justify-center transition-all shadow-md shadow-amber-600/25 hover:scale-105 ml-auto"
-                        >
-                          <Plus className="w-4 h-4 stroke-[2.5]" />
-                        </button>
+                    {/* Rodapé do Card do Dia: Total (Apenas Admin) e Botões + (Vermelho = Adiantamento, Âmbar = Diária) */}
+                    {(isAdmin || isCaixa) && (
+                      <div className="p-2.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex items-center justify-between text-xs">
+                        <div>
+                          {isAdmin && typeof day.dayTotal === 'number' && (() => {
+                            const dayAdvancesTotal = advances
+                              .filter((a) => a.date === day.date)
+                              .reduce((sum, a) => sum + a.value, 0);
+                            const netDayTotal = day.dayTotal - dayAdvancesTotal;
+                            return (
+                              <>
+                                <span className="text-slate-500 mr-1">Total:</span>
+                                <span className="font-bold text-slate-900">R$ {netDayTotal.toFixed(2)}</span>
+                              </>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="flex items-center space-x-1.5 ml-auto">
+                          <button
+                            onClick={() => openAdvanceModal(day.date)}
+                            title="Registrar adiantamento neste dia"
+                            className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white flex items-center justify-center transition-all shadow-md shadow-red-600/25 hover:scale-105"
+                          >
+                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+
+                          <button
+                            onClick={() => openCreateModal(day.date)}
+                            title="Registrar diárias neste dia"
+                            className="w-8 h-8 rounded-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white flex items-center justify-center transition-all shadow-md shadow-amber-600/25 hover:scale-105"
+                          >
+                            <Plus className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -491,8 +632,8 @@ export const DailiesPage: React.FC = () => {
             </div>
           )}
 
-          {/* Resumo Semanal por Funcionário */}
-          {(mode === 'Weekly' || mode === 'Summary') && weeklySummary && (
+          {/* Resumo Semanal / Mensal por Funcionário */}
+          {weeklySummary && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50/60">
                 <div className="flex items-center space-x-2.5">
@@ -501,11 +642,18 @@ export const DailiesPage: React.FC = () => {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-slate-900">
-                      Resumo Semanal por Funcionário
+                      {mode === 'Monthly'
+                        ? 'Resumo Mensal por Funcionário (Adiantamentos CLT)'
+                        : 'Resumo Semanal por Funcionário (Adiantamentos Freelancer)'}
                     </h2>
                     <p className="text-xs text-slate-500">
                       {weeklySummary.period} • {weeklySummary.totalDailiesCount}{' '}
                       {weeklySummary.totalDailiesCount === 1 ? 'diária realizada' : 'diárias realizadas'}
+                      {(weeklySummary.totalAdvances ?? 0) > 0 && (
+                        <span className="ml-2 text-red-600 font-semibold">
+                          • Adiantamentos: - R$ {(weeklySummary.totalAdvances ?? 0).toFixed(2)}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -513,7 +661,7 @@ export const DailiesPage: React.FC = () => {
 
               {weeklySummary.users.length === 0 ? (
                 <div className="p-8 text-center text-sm text-slate-400">
-                  Nenhuma diária registrada nesta semana.
+                  Nenhum registro encontrado neste período.
                 </div>
               ) : (
                 <div className="divide-y divide-slate-200">
@@ -524,11 +672,20 @@ export const DailiesPage: React.FC = () => {
                     >
                       {/* Dados do Funcionário */}
                       <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-bold text-slate-900 text-sm">{u.userName}</span>
                           <span className="text-xs text-slate-400">@{u.login}</span>
                           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                             {u.userRole}
+                          </span>
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                              u.contractType === 'Clt'
+                                ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}
+                          >
+                            {u.contractType === 'Clt' ? 'CLT' : 'Freelancer'}
                           </span>
                         </div>
 
@@ -547,7 +704,7 @@ export const DailiesPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Quantidades e Valores da Semana */}
+                      {/* Quantidades e Valores do Período */}
                       <div className="flex flex-wrap items-center gap-3">
                         <div className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs">
                           <span className="text-slate-500 block text-[10px] uppercase font-semibold">
@@ -577,10 +734,21 @@ export const DailiesPage: React.FC = () => {
                           </div>
                         </div>
 
+                        {(u.totalAdvances ?? 0) > 0 && (
+                          <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-xs">
+                            <span className="text-red-600 block text-[10px] uppercase font-semibold">
+                              Adiantamentos ({u.advancesCount ?? 0})
+                            </span>
+                            <span className="font-bold text-red-700 text-sm">
+                              - R$ {(u.totalAdvances ?? 0).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+
                         {isAdmin && typeof u.totalValue === 'number' && (
                           <div className="px-3.5 py-2 rounded-xl bg-amber-50/70 border border-amber-200 text-xs min-w-[160px]">
                             <div className="flex items-center justify-between">
-                              <span className="text-slate-600 font-medium">Total:</span>
+                              <span className="text-slate-600 font-medium">Líquido:</span>
                               <span className="font-bold text-slate-900 text-sm">
                                 R$ {u.totalValue.toFixed(2)}
                               </span>
@@ -596,7 +764,7 @@ export const DailiesPage: React.FC = () => {
                           </div>
                         )}
 
-                        {isAdmin && (
+                        {isAdmin && mode !== 'Monthly' && (
                           u.pendingDailies > 0 ? (
                             <button
                               onClick={() => handlePayUserWeek(u.userId, u.userName)}
@@ -834,6 +1002,142 @@ export const DailiesPage: React.FC = () => {
                 >
                   {editSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Salvar Observação
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cadastro de Adiantamento (1 Funcionário + Valor) */}
+      {advanceModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <h2 className="text-lg font-bold text-slate-900 mb-1 flex items-center">
+              <DollarSign className="w-5 h-5 text-red-600 mr-1.5" />
+              Registrar Adiantamento
+            </h2>
+            <p className="text-xs text-slate-500 mb-4">
+              Selecione um funcionário e informe o valor do adiantamento concedido.
+            </p>
+
+            {advanceModalError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start">
+                <AlertCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                <span>{advanceModalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateAdvance} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                  Data do Adiantamento
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={advanceDate}
+                  onChange={(e) => setAdvanceDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Funcionário
+                </label>
+
+                <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
+                  {usersList.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400 border border-slate-200 rounded-xl">
+                      Nenhum funcionário cadastrado.
+                    </div>
+                  ) : (
+                    usersList.map((u) => {
+                      const isSelected = selectedAdvanceUserId === u.id;
+
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setSelectedAdvanceUserId(u.id)}
+                          className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                            isSelected
+                              ? 'border-red-500 bg-red-50/70 ring-1 ring-red-500'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5">
+                            <div
+                              className={`w-4 h-4 rounded-full flex items-center justify-center border transition-colors ${
+                                isSelected
+                                  ? 'border-red-600 bg-red-600 text-white'
+                                  : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-slate-900">{u.name}</p>
+                              <span className="text-[10px] text-slate-500">@{u.login}</span>
+                            </div>
+                          </div>
+
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {u.userRole}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                  Valor do Adiantamento (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={advanceValue}
+                  onChange={(e) => setAdvanceValue(e.target.value)}
+                  placeholder="ex: 50.00"
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                  Observações (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={advanceNotes}
+                  onChange={(e) => setAdvanceNotes(e.target.value)}
+                  placeholder="ex: Adiantamento em dinheiro no caixa..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm text-slate-900 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAdvanceModalOpen(false)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={advanceSubmitting || !selectedAdvanceUserId || !advanceValue}
+                  className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-50 transition-colors shadow-sm flex items-center"
+                >
+                  {advanceSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Salvar Adiantamento
                 </button>
               </div>
             </form>

@@ -6,6 +6,7 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
     public DbSet<User> Users { get; set; }
     public DbSet<Daily> Dailies { get; set; }
+    public DbSet<Advance> Advances { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,6 +26,16 @@ public class AppDbContext : DbContext
             .HasOne(d => d.User)
             .WithMany()
             .HasForeignKey(d => d.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Advance>()
+            .Property(a => a.Value)
+            .HasPrecision(10, 2);
+
+        modelBuilder.Entity<Advance>()
+            .HasOne(a => a.User)
+            .WithMany()
+            .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -72,6 +72,7 @@ public class DatabaseSeeder : BackgroundService
                             Login = item.Login,
                             Password = item.Password,
                             UserRole = item.UserRole,
+                            ContractType = item.ContractType,
                             DailyRate = item.DailyRate,
                             DailyRateWkend = item.DailyRateWkend,
                             Pix = item.Pix

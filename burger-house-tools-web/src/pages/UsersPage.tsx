@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { userService } from '../services/userService';
-import type { User, UserInput } from '../types/user';
+import type { User, UserInput, ContractType } from '../types/user';
 import type { UserRole } from '../types/auth';
 import { Users, Plus, Shield, DollarSign, UserCheck, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 
@@ -17,6 +17,7 @@ export const UsersPage: React.FC = () => {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [userRole, setUserRole] = useState<UserRole>('Garcom');
+  const [contractType, setContractType] = useState<ContractType>('Freelancer');
   const [dailyRate, setDailyRate] = useState<number>(100);
   const [dailyRateWkend, setDailyRateWkend] = useState<number>(120);
   const [pix, setPix] = useState('');
@@ -50,6 +51,7 @@ export const UsersPage: React.FC = () => {
       login,
       password,
       userRole,
+      contractType,
       dailyRate: Number(dailyRate),
       dailyRateWkend: Number(dailyRateWkend),
       pix,
@@ -162,6 +164,9 @@ export const UsersPage: React.FC = () => {
                     Função
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Contrato
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Chave Pix
                   </th>
                   {isAdmin && (
@@ -185,6 +190,17 @@ export const UsersPage: React.FC = () => {
                     <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">{u.name}</td>
                     <td className="px-6 py-4 text-slate-500 whitespace-nowrap">@{u.login}</td>
                     <td className="px-6 py-4 whitespace-nowrap">{roleBadge(u.userRole)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                          u.contractType === 'Clt'
+                            ? 'bg-purple-100 text-purple-800 border-purple-200'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                        }`}
+                      >
+                        {u.contractType === 'Clt' ? 'CLT' : 'Freelancer'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-slate-600 font-mono text-xs whitespace-nowrap">{u.pix || '-'}</td>
                     {isAdmin && (
                       <>
@@ -289,6 +305,20 @@ export const UsersPage: React.FC = () => {
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+                  Tipo de Contrato
+                </label>
+                <select
+                  value={contractType}
+                  onChange={(e) => setContractType(e.target.value as ContractType)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="Freelancer">Freelancer</option>
+                  <option value="Clt">CLT</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
