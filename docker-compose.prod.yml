@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=${DB_PASSWORD:-SuaSenhaForte123!}
+      - SA_PASSWORD=${DB_PASSWORD}
     volumes:
       - sqlserver_data:/var/opt/mssql
 
@@ -13,18 +13,14 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq_broker
     restart: unless-stopped
-    ports:
-      - "15672:15672"
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
     container_name: keycloak_auth
     restart: unless-stopped
     environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
-    ports:
-      - "8080:8080"
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     command: start-dev --import-realm
@@ -41,15 +37,13 @@ services:
       - keycloak
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MotoristaDb;User Id=sa;Password=${DB_PASSWORD:-SuaSenhaForte123!};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=MotoristaDb;User Id=sa;Password=${DB_PASSWORD};TrustServerCertificate=True;
       - Keycloak__Authority=http://keycloak:8080/realms/burger-house
       - Keycloak__ClientId=burger-house-api
       - Keycloak__AdminClientId=admin-cli
-      - Keycloak__AdminClientSecret=${KEYCLOAK_CLIENT_SECRET:-burger-house-admin-secret-123}
+      - Keycloak__AdminClientSecret=${KEYCLOAK_CLIENT_SECRET}
       - RabbitMq__HostName=rabbitmq
       - INITIAL_USERS_JSON=${INITIAL_USERS_JSON:-}
-    ports:
-      - "5016:8080"
 
   web:
     build:
