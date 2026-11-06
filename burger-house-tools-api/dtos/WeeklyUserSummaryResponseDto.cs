@@ -9,6 +9,7 @@ public class UserWeeklySummaryDto
     public string UserName { get; set; } = string.Empty;
     public string Login { get; set; } = string.Empty;
     public UserRole UserRole { get; set; }
+    public ContractType ContractType { get; set; }
     public string Pix { get; set; } = string.Empty;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -22,6 +23,8 @@ public class UserWeeklySummaryDto
     public int WeekendDailies { get; set; }
     public int PaidDailies { get; set; }
     public int PendingDailies { get; set; }
+    public int AdvancesCount { get; set; }
+    public decimal TotalAdvances { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? TotalValue { get; set; }
@@ -33,6 +36,7 @@ public class UserWeeklySummaryDto
     public decimal? TotalPending { get; set; }
 
     public List<DailyResponseDto> Dailies { get; set; } = new();
+    public List<AdvanceResponseDto> Advances { get; set; } = new();
 }
 
 public class WeeklyUserSummaryResponseDto
@@ -41,6 +45,8 @@ public class WeeklyUserSummaryResponseDto
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public int TotalDailiesCount { get; set; }
+    public int TotalAdvancesCount { get; set; }
+    public decimal TotalAdvances { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? TotalValue { get; set; }

@@ -62,6 +62,7 @@ public class UsersController : ControllerBase
             Login = input.Login,
             Password = input.Password,
             UserRole = input.UserRole,
+            ContractType = input.ContractType,
             DailyRate = input.DailyRate,
             DailyRateWkend = input.DailyRateWkend,
             Pix = input.Pix
@@ -78,6 +79,7 @@ public class UsersController : ControllerBase
             Login = user.Login,
             Password = user.Password,
             UserRole = user.UserRole,
+            ContractType = user.ContractType,
             DailyRate = user.DailyRate,
             DailyRateWkend = user.DailyRateWkend,
             Pix = user.Pix
@@ -99,6 +101,7 @@ public class UsersController : ControllerBase
         user.Login = input.Login;
         user.Password = input.Password;
         user.UserRole = input.UserRole;
+        user.ContractType = input.ContractType;
         user.DailyRate = input.DailyRate;
         user.DailyRateWkend = input.DailyRateWkend;
         user.Pix = input.Pix;
@@ -132,6 +135,7 @@ public class UsersController : ControllerBase
             Name = user.Name,
             Login = user.Login,
             UserRole = user.UserRole,
+            ContractType = user.ContractType,
             DailyRate = canViewDailyRate ? user.DailyRate : null,
             DailyRateWkend = canViewDailyRate ? user.DailyRateWkend : null,
             Pix = user.Pix

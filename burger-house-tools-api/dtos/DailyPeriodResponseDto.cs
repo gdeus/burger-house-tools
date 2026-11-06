@@ -8,6 +8,8 @@ public class DailyDaySummaryDto
     public string DayOfWeek { get; set; } = string.Empty;
     public bool IsWeekend { get; set; }
     public List<DailyResponseDto> Dailies { get; set; } = new();
+    public List<AdvanceResponseDto> Advances { get; set; } = new();
+    public decimal DayAdvancesTotal { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? DayTotal { get; set; }
@@ -20,6 +22,7 @@ public class DailyPeriodResponseDto
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public List<DailyDaySummaryDto> Days { get; set; } = new();
+    public decimal TotalAdvances { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? TotalValue { get; set; }

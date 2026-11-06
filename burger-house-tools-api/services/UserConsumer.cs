@@ -88,6 +88,7 @@ public class UserConsumer : BackgroundService
                             Login = input.Login,
                             Password = input.Password,
                             UserRole = input.UserRole,
+                            ContractType = input.ContractType,
                             DailyRate = input.DailyRate,
                             DailyRateWkend = input.DailyRateWkend,
                             Pix = input.Pix

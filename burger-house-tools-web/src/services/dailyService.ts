@@ -28,6 +28,15 @@ export const dailyService = {
     return response.data;
   },
 
+  async getMonthlySummary(params?: {
+    year?: number;
+    month?: number;
+    userId?: number;
+  }): Promise<WeeklyUserSummaryResponse> {
+    const response = await api.get<WeeklyUserSummaryResponse>('/dailies/monthly-summary', { params });
+    return response.data;
+  },
+
   async create(daily: DailyInput): Promise<Daily> {
     const response = await api.post<Daily>('/dailies', daily);
     return response.data;

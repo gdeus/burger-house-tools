@@ -10,6 +10,7 @@ public class UserResponseDto
     public string Name { get; set; } = string.Empty;
     public string Login { get; set; } = string.Empty;
     public UserRole UserRole { get; set; }
+    public ContractType ContractType { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? DailyRate { get; set; }

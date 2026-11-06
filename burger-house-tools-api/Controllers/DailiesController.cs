@@ -1,6 +1,7 @@
 using System.Globalization;
 using burger_house_tools_api.DTOs;
 using burger_house_tools_api.Models;
+using burger_house_tools_api.Models.Enums;
 using burger_house_tools_api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -208,68 +209,13 @@ public class DailiesController : ControllerBase
 
         var endOfWeek = startOfWeek.AddDays(6);
         var weekNumber = ISOWeek.GetWeekOfYear(startOfWeek.ToDateTime(TimeOnly.MinValue));
-        var canViewValues = User.IsInRole("Admin");
 
-        var query = _context.Dailies
-            .Include(d => d.User)
-            .Where(d => d.Date >= startOfWeek && d.Date <= endOfWeek);
-
-        if (userId.HasValue)
-        {
-            query = query.Where(d => d.UserId == userId.Value);
-        }
-
-        var dailies = await query
-            .OrderBy(d => d.Date)
-            .ToListAsync();
-
-        var usersSummary = dailies
-            .GroupBy(d => d.User)
-            .Select(g =>
-            {
-                var user = g.Key;
-                var userDailies = g.ToList();
-                var weekendCount = userDailies.Count(d => d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
-                var weekdayCount = userDailies.Count - weekendCount;
-                var paidCount = userDailies.Count(d => d.Paid);
-                var pendingCount = userDailies.Count - paidCount;
-
-                return new UserWeeklySummaryDto
-                {
-                    UserId = user.Id,
-                    UserName = user.Name,
-                    Login = user.Login,
-                    UserRole = user.UserRole,
-                    Pix = user.Pix,
-                    DailyRate = canViewValues ? user.DailyRate : null,
-                    DailyRateWkend = canViewValues ? user.DailyRateWkend : null,
-                    TotalDailies = userDailies.Count,
-                    WeekdayDailies = weekdayCount,
-                    WeekendDailies = weekendCount,
-                    PaidDailies = paidCount,
-                    PendingDailies = pendingCount,
-                    TotalValue = canViewValues ? userDailies.Sum(d => d.Value) : null,
-                    TotalPaid = canViewValues ? userDailies.Where(d => d.Paid).Sum(d => d.Value) : null,
-                    TotalPending = canViewValues ? userDailies.Where(d => !d.Paid).Sum(d => d.Value) : null,
-                    Dailies = userDailies.Select(d => MapToDto(d, user, canViewValues)).ToList()
-                };
-            })
-            .OrderBy(u => u.UserName)
-            .ToList();
-
-        var response = new WeeklyUserSummaryResponseDto
-        {
-            Period = $"Week {weekNumber} - {startOfWeek.Year} ({startOfWeek:dd/MM} to {endOfWeek:dd/MM})",
-            StartDate = startOfWeek,
-            EndDate = endOfWeek,
-            TotalDailiesCount = dailies.Count,
-            TotalValue = canViewValues ? dailies.Sum(d => d.Value) : null,
-            TotalPaid = canViewValues ? dailies.Where(d => d.Paid).Sum(d => d.Value) : null,
-            TotalPending = canViewValues ? dailies.Where(d => !d.Paid).Sum(d => d.Value) : null,
-            Users = usersSummary
-        };
-
-        return Ok(response);
+        return Ok(await BuildUserSummaryResponseAsync(
+            periodTitle: $"Week {weekNumber} - {startOfWeek.Year} ({startOfWeek:dd/MM} to {endOfWeek:dd/MM})",
+            startDate: startOfWeek,
+            endDate: endOfWeek,
+            advanceContractFilter: ContractType.Freelancer,
+            userId: userId));
     }
 
     [HttpGet("monthly")]
@@ -289,6 +235,29 @@ public class DailiesController : ControllerBase
             mode: "Monthly",
             startDate: startDate,
             endDate: endDate));
+    }
+
+    [HttpGet("monthly-summary")]
+    [Authorize(Roles = "Admin,Caixa")]
+    public async Task<IActionResult> GetMonthlySummary(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        [FromQuery] int? userId)
+    {
+        var targetYear = year ?? DateTime.UtcNow.Year;
+        var targetMonth = month ?? DateTime.UtcNow.Month;
+
+        var startDate = new DateOnly(targetYear, targetMonth, 1);
+        var endDate = startDate.AddMonths(1).AddDays(-1);
+
+        var monthName = CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(targetMonth);
+
+        return Ok(await BuildUserSummaryResponseAsync(
+            periodTitle: $"{monthName} / {targetYear}",
+            startDate: startDate,
+            endDate: endDate,
+            advanceContractFilter: ContractType.Clt,
+            userId: userId));
     }
 
     [HttpPut("{id}")]
@@ -445,14 +414,129 @@ public class DailiesController : ControllerBase
         });
     }
 
+    private async Task<WeeklyUserSummaryResponseDto> BuildUserSummaryResponseAsync(
+        string periodTitle,
+        DateOnly startDate,
+        DateOnly endDate,
+        ContractType advanceContractFilter,
+        int? userId)
+    {
+        var canViewValues = User.IsInRole("Admin");
+
+        // No resumo semanal: exibe apenas funcionários Freelancer.
+        // No resumo mensal: exibe apenas funcionários CLT.
+        var dailiesQuery = _context.Dailies
+            .Include(d => d.User)
+            .Where(d => d.Date >= startDate && d.Date <= endDate && d.User.ContractType == advanceContractFilter);
+
+        var advancesQuery = _context.Advances
+            .Include(a => a.User)
+            .Where(a => a.Date >= startDate && a.Date <= endDate && a.User.ContractType == advanceContractFilter);
+
+        if (userId.HasValue)
+        {
+            dailiesQuery = dailiesQuery.Where(d => d.UserId == userId.Value);
+            advancesQuery = advancesQuery.Where(a => a.UserId == userId.Value);
+        }
+
+        var dailies = await dailiesQuery
+            .OrderBy(d => d.Date)
+            .ToListAsync();
+
+        var advances = await advancesQuery
+            .OrderBy(a => a.Date)
+            .ThenBy(a => a.Id)
+            .ToListAsync();
+
+        var usersById = new Dictionary<int, User>();
+        foreach (var d in dailies)
+        {
+            usersById[d.UserId] = d.User;
+        }
+        foreach (var a in advances)
+        {
+            usersById[a.UserId] = a.User;
+        }
+
+        var usersSummary = usersById.Values
+            .Select(user =>
+            {
+                var userDailies = dailies.Where(d => d.UserId == user.Id).ToList();
+                var userAdvances = advances.Where(a => a.UserId == user.Id).ToList();
+
+                var weekendCount = userDailies.Count(d => d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+                var weekdayCount = userDailies.Count - weekendCount;
+                var paidCount = userDailies.Count(d => d.Paid);
+                var pendingCount = userDailies.Count - paidCount;
+
+                var userAdvancesTotal = userAdvances.Sum(a => a.Value);
+                var rawTotalValue = userDailies.Sum(d => d.Value);
+                var rawTotalPaid = userDailies.Where(d => d.Paid).Sum(d => d.Value);
+                var rawTotalPending = userDailies.Where(d => !d.Paid).Sum(d => d.Value);
+
+                return new UserWeeklySummaryDto
+                {
+                    UserId = user.Id,
+                    UserName = user.Name,
+                    Login = user.Login,
+                    UserRole = user.UserRole,
+                    ContractType = user.ContractType,
+                    Pix = user.Pix,
+                    DailyRate = canViewValues ? user.DailyRate : null,
+                    DailyRateWkend = canViewValues ? user.DailyRateWkend : null,
+                    TotalDailies = userDailies.Count,
+                    WeekdayDailies = weekdayCount,
+                    WeekendDailies = weekendCount,
+                    PaidDailies = paidCount,
+                    PendingDailies = pendingCount,
+                    AdvancesCount = userAdvances.Count,
+                    TotalAdvances = userAdvancesTotal,
+                    TotalValue = canViewValues ? rawTotalValue - userAdvancesTotal : null,
+                    TotalPaid = canViewValues ? rawTotalPaid : null,
+                    TotalPending = canViewValues ? rawTotalPending - userAdvancesTotal : null,
+                    Dailies = userDailies.Select(d => MapToDto(d, user, canViewValues)).ToList(),
+                    Advances = userAdvances.Select(a => MapAdvanceToDto(a, user)).ToList()
+                };
+            })
+            .OrderBy(u => u.UserName)
+            .ToList();
+
+        var totalAdvancesSum = advances.Sum(a => a.Value);
+        var periodDailiesValue = dailies.Sum(d => d.Value);
+        var periodDailiesPaid = dailies.Where(d => d.Paid).Sum(d => d.Value);
+        var periodDailiesPending = dailies.Where(d => !d.Paid).Sum(d => d.Value);
+
+        return new WeeklyUserSummaryResponseDto
+        {
+            Period = periodTitle,
+            StartDate = startDate,
+            EndDate = endDate,
+            TotalDailiesCount = dailies.Count,
+            TotalAdvancesCount = advances.Count,
+            TotalAdvances = totalAdvancesSum,
+            TotalValue = canViewValues ? periodDailiesValue - totalAdvancesSum : null,
+            TotalPaid = canViewValues ? periodDailiesPaid : null,
+            TotalPending = canViewValues ? periodDailiesPending - totalAdvancesSum : null,
+            Users = usersSummary
+        };
+    }
+
     private async Task<DailyPeriodResponseDto> BuildPeriodResponseAsync(string periodTitle, string mode, DateOnly startDate, DateOnly endDate)
     {
         var canViewValues = User.IsInRole("Admin");
+        var advanceContractFilter = mode == "Monthly" ? ContractType.Clt : ContractType.Freelancer;
 
         var dailies = await _context.Dailies
             .Include(d => d.User)
             .Where(d => d.Date >= startDate && d.Date <= endDate)
             .OrderBy(d => d.Date)
+            .ToListAsync();
+
+        var advances = await _context.Advances
+            .Include(a => a.User)
+            .Where(a => a.Date >= startDate && a.Date <= endDate && a.User.ContractType == advanceContractFilter)
+            .OrderBy(a => a.Date)
+            .ThenBy(a => a.Id)
             .ToListAsync();
 
         var daysList = new List<DailyDaySummaryDto>();
@@ -465,7 +549,15 @@ public class DailiesController : ControllerBase
                 .Select(x => MapToDto(x, x.User, canViewValues))
                 .ToList();
 
-            decimal? dayTotal = canViewValues ? dayDailies.Sum(x => x.Value ?? 0) : null;
+            var dayAdvances = advances
+                .Where(a => a.Date == d)
+                .Select(a => MapAdvanceToDto(a, a.User))
+                .ToList();
+
+            var dayAdvancesTotal = dayAdvances.Sum(a => a.Value);
+            decimal? dayTotal = canViewValues
+                ? dayDailies.Sum(x => x.Value ?? 0)
+                : null;
 
             daysList.Add(new DailyDaySummaryDto
             {
@@ -473,13 +565,16 @@ public class DailiesController : ControllerBase
                 DayOfWeek = d.DayOfWeek.ToString(),
                 IsWeekend = isWeekend,
                 Dailies = dayDailies,
+                Advances = dayAdvances,
+                DayAdvancesTotal = dayAdvancesTotal,
                 DayTotal = dayTotal
             });
         }
 
-        decimal? totalValue = canViewValues ? dailies.Sum(d => d.Value) : null;
+        var totalAdvancesSum = advances.Sum(a => a.Value);
+        decimal? totalValue = canViewValues ? dailies.Sum(d => d.Value) - totalAdvancesSum : null;
         decimal? totalPaid = canViewValues ? dailies.Where(d => d.Paid).Sum(d => d.Value) : null;
-        decimal? totalPending = canViewValues ? dailies.Where(d => !d.Paid).Sum(d => d.Value) : null;
+        decimal? totalPending = canViewValues ? dailies.Where(d => !d.Paid).Sum(d => d.Value) - totalAdvancesSum : null;
 
         return new DailyPeriodResponseDto
         {
@@ -488,6 +583,7 @@ public class DailiesController : ControllerBase
             StartDate = startDate,
             EndDate = endDate,
             Days = daysList,
+            TotalAdvances = totalAdvancesSum,
             TotalValue = totalValue,
             TotalPaid = totalPaid,
             TotalPending = totalPending
@@ -506,6 +602,21 @@ public class DailiesController : ControllerBase
             Paid = daily.Paid,
             Notes = daily.Notes,
             Value = canViewValues ? daily.Value : null
+        };
+    }
+
+    private static AdvanceResponseDto MapAdvanceToDto(Advance advance, User user)
+    {
+        return new AdvanceResponseDto
+        {
+            Id = advance.Id,
+            UserId = advance.UserId,
+            UserName = user.Name,
+            UserRole = user.UserRole,
+            ContractType = user.ContractType,
+            Value = advance.Value,
+            Date = advance.Date,
+            Notes = advance.Notes
         };
     }
 }
