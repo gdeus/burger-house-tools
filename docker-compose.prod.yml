@@ -55,6 +55,10 @@ services:
       - api
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
 
 volumes:
   sqlserver_data:
