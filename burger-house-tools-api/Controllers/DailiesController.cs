@@ -39,7 +39,7 @@ public class DailiesController : ControllerBase
             return BadRequest(new { message = "Daily shift already registered for this user on this date." });
         }
 
-        var isWeekend = input.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+        var isWeekend = IsWeekend(input.Date);
         var calculatedValue = isWeekend ? user.DailyRateWkend : user.DailyRate;
 
         var daily = new Daily
@@ -95,7 +95,7 @@ public class DailiesController : ControllerBase
             return BadRequest(new { message = "Daily shift already registered for all selected users on this date." });
         }
 
-        var isWeekend = input.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+        var isWeekend = IsWeekend(input.Date);
         var createdDailies = new List<Daily>();
 
         foreach (var user in usersToRegister)
@@ -464,7 +464,7 @@ public class DailiesController : ControllerBase
                 var userDailies = dailies.Where(d => d.UserId == user.Id).ToList();
                 var userAdvances = advances.Where(a => a.UserId == user.Id).ToList();
 
-                var weekendCount = userDailies.Count(d => d.Date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday);
+                var weekendCount = userDailies.Count(d => IsWeekend(d.Date));
                 var weekdayCount = userDailies.Count - weekendCount;
                 var paidCount = userDailies.Count(d => d.Paid);
                 var pendingCount = userDailies.Count - paidCount;
@@ -543,7 +543,7 @@ public class DailiesController : ControllerBase
 
         for (var d = startDate; d <= endDate; d = d.AddDays(1))
         {
-            var isWeekend = d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            var isWeekend = IsWeekend(d);
             var dayDailies = dailies
                 .Where(x => x.Date == d)
                 .Select(x => MapToDto(x, x.User, canViewValues))
@@ -619,4 +619,7 @@ public class DailiesController : ControllerBase
             Notes = advance.Notes
         };
     }
+
+    private static bool IsWeekend(DateOnly date) =>
+        date.DayOfWeek is DayOfWeek.Friday or DayOfWeek.Saturday or DayOfWeek.Sunday;
 }
